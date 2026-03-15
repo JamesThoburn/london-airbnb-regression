@@ -1,0 +1,96 @@
+---
+title: "Exploratory Data Analysis"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "")
+```
+
+## Load Libraries
+```{r libraries}
+library(tidyverse) # Allows us to easily manipulate and visualise data
+library(corrplot) # Allows us to visualise correlation matrices
+```
+
+## Load Data
+```{r load-data}
+listings <- read_csv("data/clean/listings_clean.csv")
+```
+
+## Price Distribution
+
+We begin by examining the distribution of our target variable, `price`, before any transformation is applied.
+
+```{r price-summary}
+listings |> 
+  summarise(
+    min = min(price),
+    q1 = quantile(price, 0.25),
+    median = median(price),
+    mean = round(mean(price), 2),
+    q3 = quantile(price, 0.75),
+    max = max(price),
+    sd = round(sd(price), 2)
+  )
+```
+
+```{r price-distribution}
+ggplot(listings, aes(x = price)) +
+  geom_histogram(bins = 100, fill = "#4a90d9", colour = "white") +
+  labs(
+    title = "Distribution of Nightly Price",
+    x = "Price ($)",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+The distribution is severely right-skewed, with a maximum price of $74,100 pulling the histogram into an unreadable spike. The mean ($`r round(mean(listings$price), 2)`) sits well above the median ($`r median(listings$price)`), confirming the right skew of the nightly prices distribution. These extreme values are almost certainly either data-entry errors or entire-property long-term rental listings rather than genuine nightly prices.
+
+We will examine the upper tail more closely before deciding on a capping threshold.
+
+```{r examine-price-tail}
+listings |>
+  summarise(
+    p90  = quantile(price, 0.90),
+    p95  = quantile(price, 0.95),
+    p99  = quantile(price, 0.99),
+    p999 = quantile(price, 0.999)
+  )
+```
+
+The upper tail reveals a very small number of extreme values -- the 99.9th percentile sits at approximately $4,621 yet the maximum is $74,100, suggesting these are not genuine nightly prices. As such, we will cap the price at the 99th percentile (approximately $908) to remove clear outliers while retaining legitimate high-end listings. This affects fewer than 1% of observations.
+
+```{r price-cap}
+cap <- 908.00
+
+listings <- listings |> 
+  filter(price <= cap)
+```
+
+With outliers removed, we apply a log transformation to price. Log transformation is appropriate here because price is strictly a positive quanity, the raw distribution of price is heavily right-skewed and proportional differences in price are more meaningful than absolute ones (e.g. a 50 dollar increase on a 100 dollar listing is far more significant than the same increase on a 500 dollar listing).
+
+```{r log-price}
+listings <- listings |> 
+  mutate(log_price = log(price))
+```
+
+This log transformation gives us the following distribution:
+
+```{r log-price-dist}
+ggplot(listings, aes(x = log_price)) +
+  geom_histogram(bins = 100, fill = "#4a90d9", colour = "white") +
+  labs(
+    title = "Distribution of Log Nightly Price",
+    x = "Log Price",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
