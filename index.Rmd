@@ -1,0 +1,41 @@
+---
+title: "Predicting Airbnb Listing Prices in London"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Overview
+
+This project investigates what factors drive Airbnb listing prices across London. Using listing data sourced from [Inside Airbnb](https://insideairbnb.com), a multiple linear regression model is developed to predict the nightly price from property and host characteristics.
+
+## Research Question
+
+**What property and host characteristics are the strongest predictors of nightly Airbnb listing prices in London?**
+
+## Why Linear Regression
+
+Price is a continuous numeric target variable, making linear regression a natural first approach for us to take. The goal here is not only predictive accuracy but also interpretability. Understanding the direction and magnitude of individual predictors is as valuable as the model's overall fit.
+
+## Data Source
+
+Data is sourced from Inside Airbnb, an independent project that collects publicly available Airbnb listing data from a variety of cities located across the globe. The London dataset is from the 14th of September 2025 and contains about 90,000-100,000 listings with details on property type, characteristics, pricing and more.
+
+## Project Structure
+
+The analysis is organised as follows:
+
+1. **Data Cleaning:** Handling missing values, dealing with outliers.
+2. **Exploratory Data Analysis:** Studying distributions, correlations and patterns within the data.
+3. **Feature Engineering:** Applying transformations, factor encoding and interaction terms.
+4. **Modelling:** Producing a regression model.
+5. **Assumptions:** Checking that the linear model assumptions have been met.
+6. **Evaluation:** Discussing results, limitations and coming to conclusions.
