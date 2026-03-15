@@ -16,12 +16,200 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "
 ## Load Libraries
 ```{r libraries}
 library(tidyverse) # Allows us to easily manipulate and visualise data
-library(janitor) # Helps us clean data
-library(skimr) # Gives rich summaries of dataframes
-library(visdat) # Visualises missing data patterns across the whole data at a glance
 ```
 
 ## Load Data
 ```{r load-data}
 listings <- read_csv("data/raw/listings.csv.gz")
+```
+
+## Column Selection
+
+We start by examining the names of the different columns of the dataset to get a better understanding of what is and isn't relevant to our analysis.
+
+```{r names}
+names(listings)
+```
+
+`r ncol(listings)` columns is far too many for this analysis. As such, we reduce to only those that are plausibly relevant to predicting nightly price. A lot of the excluded columns either are related to how the data was scraped, rely on NLP to use or offer no predictive value towards the nightly price (e.g. `id` and `picture_url`). 
+
+It should also be noted that `estimated_revenue_l365d` is excluded because it has a high risk of causing data leakage for the model since this column is directly related to the nightly price of the listing.
+
+```{r column-selection}
+listings <- listings |> 
+  select(
+    # Target variable
+    price,
+    
+    # Property characteristics
+    property_type,
+    room_type,
+    accommodates,
+    bathrooms_text,
+    bedrooms,
+    beds,
+    amenities,
+    
+    # Location
+    neighbourhood_cleansed,
+    neighbourhood_group_cleansed,
+    latitude,
+    longitude,
+    
+    # Host characteristics
+    host_since,
+    host_response_time,
+    host_response_rate,
+    host_acceptance_rate,
+    host_is_superhost,
+    host_listings_count,
+    host_identity_verified,
+    
+    # Reviews
+    number_of_reviews,
+    review_scores_rating,
+    review_scores_cleanliness,
+    review_scores_location,
+    review_scores_value,
+    reviews_per_month,
+    
+    # Availability and booking
+    minimum_nights,
+    availability_365,
+    instant_bookable
+  )
+```
+
+## Price Cleaning
+
+The `price` column is our target variable. Before anything else, we need to verify its data type and clean it if necessary.
+
+```{r price-type}
+class(listings$price)
+```
+
+Price is initially stored as a character string with a dollar sign and comma formatting (e.g. `$1,000.00`). We want this to be numeric for linear regression, so we strip these characters and convert  it to be numeric.
+
+```{r price-clean}
+listings <- listings |> 
+  mutate(price = as.numeric(str_replace_all(price, "[$,]", "")))
+```
+
+With `price` now numeric, we check for zeroes and missing values. A price of zero is almost certainly a data entry error rather than a genuinely free listing.
+
+```{r price-check}
+listings |> 
+  summarise(
+    missing = sum(is.na(price)),
+    zero = sum(price == 0, na.rm = TRUE),
+    negative = sum(price < 0, na.rm = TRUE)
+  )
+```
+
+The check reveals `r sum(is.na(listings$price))` missing prices, representing approximately 36% of the dataset. No zero or negative values are present. We will remove rows containing a missing price.
+
+```{r remove-missing-prices}
+listings <- listings |> 
+  filter(!is.na(price))
+```
+
+After removing missing prices, `r nrow(listings)` listings remain.
+
+## Predictor Cleaning
+
+Now we will check for missing values in the different predictor variables.
+
+```{r column-missingness-check}
+listings |>
+  summarise(across(everything(), ~ sum(is.na(.)))) |>
+  pivot_longer(everything(), names_to = "column", values_to = "n_missing") |>
+  filter(n_missing > 0) |>
+  arrange(desc(n_missing))
+```
+
+### Missing Value Treatment
+
+From this we can decide what to do with each column. Our options for handling missing values are:
+
+1. **Drop the column entirely.**
+2. **Replace missing values with the column median.**
+3. **Add an "Unknown" category.**
+4. **Convert to numeric then replace with column median.**
+5. **Drop all of the rows with missing values for a given column.**
+
+We treat each columns missingness individually based on the nature of the missing data and the proportion affected. 
+
+`neighbourhood_group_cleansed` is entirely missing and as such is dropped entirely.
+
+```{r drop-column}
+listings <- listings |> 
+  select(-neighbourhood_group_cleansed)
+```
+
+For Review scores, approximately 22% of the remaining listings have missing values. Since trying to manipulate these review scores would be making up data, rows containing missing review scores are removed. 
+
+The remaining host-level missingness (25 rows each) and `host_is_superhost` are a small enough proportion of the data such that removing rows is preferable.
+
+```{r drop-rows}
+listings <- listings |> 
+  filter(
+    # Reviews
+    !is.na(review_scores_location),
+    !is.na(review_scores_value),
+    !is.na(review_scores_cleanliness),
+    !is.na(review_scores_rating),
+    !is.na(reviews_per_month),
+    # Host details
+    !is.na(host_is_superhost),
+    !is.na(host_since),
+    !is.na(host_response_time),
+    !is.na(host_response_rate),
+    !is.na(host_acceptance_rate),
+    !is.na(host_listings_count),
+    !is.na(host_identity_verified)
+  )
+```
+
+`beds` and `bedrooms` will have their missing values replaced with the column median. `bathrooms_text` will need to be cleaned to get the numeric values of the number of bathrooms, of which we then compute the column median to replace missing values.
+
+```{r column-median}
+listings <- listings |> 
+  mutate(
+    beds = if_else(is.na(beds), median(beds, na.rm = TRUE), beds),
+    bedrooms = if_else(is.na(bedrooms), median(bedrooms, na.rm = TRUE), bedrooms),
+    bathrooms = case_when(
+      str_detect(bathrooms_text, regex("half-bath", ignore_case = TRUE)) ~ 0.5,
+      TRUE ~ as.numeric(str_extract(bathrooms_text, "[0-9]+\\.?[0-9]*"))
+    )
+  ) |> 
+  select(-bathrooms_text) |> 
+  mutate(
+    bathrooms = if_else(is.na(bathrooms), median(bathrooms, na.rm = TRUE), bathrooms)
+  )
+```
+
+`host_response_time` is (to be converted to) a categorical variable and receives an "Unknown" category whilst `host_response_rate` and `host_acceptance_rate` are stored as character strings with percentage signs on the end, and as such will be cleaned and have missing values replaced with the column median.
+
+```{r host-cleaning}
+listings <- listings |> 
+  mutate(
+    host_response_rate = as.numeric(str_replace(host_response_rate, "%", "")),
+    host_acceptance_rate = as.numeric(str_replace(host_acceptance_rate, "%", ""))
+  ) |> 
+  mutate(
+    host_response_time = if_else(host_response_time == "N/A", "unknown", host_response_time),
+    host_response_time = as.factor(host_response_time),
+    host_response_rate = if_else(is.na(host_response_rate), median(host_response_rate, na.rm = TRUE), host_response_rate),
+    host_acceptance_rate = if_else(is.na(host_acceptance_rate), median(host_acceptance_rate, na.rm = TRUE), host_acceptance_rate)
+  )
+```
+
+We now verify that there are no missing values in our dataset.
+
+```{r verify-missing}
+listings |>
+  summarise(across(everything(), ~ sum(is.na(.)))) |>
+  pivot_longer(everything(), names_to = "column", values_to = "n_missing") |>
+  filter(n_missing > 0) |>
+  arrange(desc(n_missing))
 ```
