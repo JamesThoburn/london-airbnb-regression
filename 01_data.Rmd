@@ -1,0 +1,27 @@
+---
+title: "Data Cleaning and Preparation"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "")
+```
+
+## Load Libraries
+```{r libraries}
+library(tidyverse) # Allows us to easily manipulate and visualise data
+library(janitor) # Helps us clean data
+library(skimr) # Gives rich summaries of dataframes
+library(visdat) # Visualises missing data patterns across the whole data at a glance
+```
+
+## Load Data
+```{r load-data}
+listings <- read_csv("data/raw/listings.csv.gz")
+```
