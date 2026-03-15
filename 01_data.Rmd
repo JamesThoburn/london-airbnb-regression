@@ -213,3 +213,63 @@ listings |>
   filter(n_missing > 0) |>
   arrange(desc(n_missing))
 ```
+
+### Other Data Cleaning
+
+`host_since` records the date a host joined Airbnb. The raw date is of no use to us as a predictor, but the count of the number of days since the host became a host is useful as a predictor. This will be stored as `host_tenure_days`.
+
+```{r, host-tenure}
+listings <- listings |> 
+  mutate(
+    host_since = as.Date(host_since),
+    host_tenure_days = as.numeric(as.Date("2025-09-14") - host_since) # The data comes from 14/09/2025
+  ) |> 
+  select(-host_since) # We don't need host_since anymore
+```
+
+The `amenities` column stores an array of strings. Rather than attempting to encode all of the amenities -- of which there are likely to be hundreds across the dataset -- we will extract binary flags for those most likely to influence price. However, first we should examine the proportion of each of the important amenities in the set of listings:
+
+```{r amenity-proportions}
+listings |> 
+  mutate(amenities = str_to_lower(amenities)) |> 
+  summarise(
+    wifi = mean(str_detect(amenities, "wifi")),
+    kitchen = mean(str_detect(amenities, "kitchen")),
+    air_conditioning = mean(str_detect(amenities, "air conditioning")),
+    heating = mean(str_detect(amenities, "heating")),
+    washer = mean(str_detect(amenities, "washer")),
+    dryer = mean(str_detect(amenities, "dryer")),
+    tv = mean(str_detect(amenities, "\\btv\\b")),
+    pool = mean(str_detect(amenities, "pool")),
+    gym = mean(str_detect(amenities, "gym")),
+    elevator = mean(str_detect(amenities, "elevator")),
+    parking = mean(str_detect(amenities, "parking")),
+    hot_tub = mean(str_detect(amenities, "hot tub")),
+    ev_charger = mean(str_detect(amenities, "ev charger"))
+  ) |> 
+  pivot_longer(everything(), names_to = "amenity", values_to = "proportion") |> 
+  arrange(proportion)
+```
+
+Amenities that are present in fewer than 3% of listings (pool, hot tub, EV charger) are to be excluded as they are too rare to be seen as useful predictors. Amenities that are present in more than 89% of the listings (wifi, heating, kitchen) are also to be excluded as they have near-zero variance and struggle to discriminate between listings.
+
+```{r amenities}
+listings <- listings |> 
+  mutate(amenities = str_to_lower(amenities)) |> 
+  mutate(
+    has_gym = str_detect(amenities, "gym"),
+    has_air_conditioning = str_detect(amenities, "air conditioning"),
+    has_elevator = str_detect(amenities, "elevator"),
+    has_parking = str_detect(amenities, "parking"),
+    has_tv = str_detect(amenities, "\\btv\\b"),
+    has_dryer = str_detect(amenities, "dryer"),
+    has_washer = str_detect(amenities, "washer")
+  ) |> 
+  select(-amenities)
+```
+
+Now we can simply save the cleaned dataset to `data/clean/` so that the subsequent sections of this analysis don't require us to re-run the cleaning pipeline to load.
+
+```{r save}
+write_csv(listings, "data/clean/listings_clean.csv")
+```
