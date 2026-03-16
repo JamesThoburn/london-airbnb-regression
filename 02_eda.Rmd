@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "
 ```{r libraries}
 library(tidyverse) # Allows us to easily manipulate and visualise data
 library(corrplot) # Allows us to visualise correlation matrices
+library(patchwork) # Allows us to combine multiple plots into one layout easily
 ```
 
 ## Load Data
@@ -43,7 +44,7 @@ listings |>
 
 ```{r price-distribution}
 ggplot(listings, aes(x = price)) +
-  geom_histogram(bins = 100, fill = "#4a90d9", colour = "white") +
+  geom_histogram(bins = 60, fill = "#4a90d9", colour = "white") +
   labs(
     title = "Distribution of Nightly Price",
     x = "Price ($)",
@@ -86,7 +87,7 @@ This log transformation gives us the following distribution:
 
 ```{r log-price-dist}
 ggplot(listings, aes(x = log_price)) +
-  geom_histogram(bins = 100, fill = "#4a90d9", colour = "white") +
+  geom_histogram(bins = 60, fill = "#4a90d9", colour = "white") +
   labs(
     title = "Distribution of Log Nightly Price",
     x = "Log Price",
@@ -94,3 +95,29 @@ ggplot(listings, aes(x = log_price)) +
   ) +
   theme_minimal()
 ```
+
+Using `patchwork`, we can compare the two plots. 
+
+```{r price-compare}
+p1 <- ggplot(listings, aes(x = price)) +
+  geom_histogram(bins = 60, fill = "#e05c5c", colour = "white") +
+  labs(
+    title = "Distribution of Nightly Price",
+    x = "Price ($)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = log_price)) +
+  geom_histogram(bins = 60, fill = "#4a90d9", colour = "white") +
+  labs(
+    title = "Distribution of Log Nightly Price",
+    x = "Log Price",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+p1 + p2 # Using patchwork library
+```
+
+The log transformation produces an approximately normal distribution, satisfying the normality assumption of the target variable and making the model more robust to the influence of high-value listings. As such, all subsequent analysis and modelling will use `log_price` as the target variable. The raw price is retained in the dataset so that we have good interpretability when reporting the final results.
