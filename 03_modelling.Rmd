@@ -166,3 +166,108 @@ cat("CV Model R-squared:", round(cv_r2, 4), "\n")
 The cross-validated model produces identical test set performance to the refined model (RMSE: `r round(cv_rmse,4)`, R-squared: `r round(cv_r2,4)`), which is expected since they use the same predictor set. Cross-validation changes how we estimate performance, not the model itself.
 
 More importantly, the cross-validation results show a mean RMSE of `r round(cv_model$results["RMSE"], 4)` across 10 folds with a standard deviation of `r round(cv_model$results["RMSESD"], 4)`. This low variance across folds indicates the model is stable since performance is consistent regardless of which subset of the training data is used. The cross-validated R-squared of `r round(cv_model$results["Rsquared"], 4)` is very close to the test set R-squared of `r round(cv_r2, 4)`, indicating that the model generalises well to unseen data and is not overfitting to the training data.
+
+## Lasso Model
+
+Lasso regression extends ordinary least squares by adding a penalty term that shrinks predictor coefficients towards zero. Unlike standard regression, Lasso can shrink coefficients to exactly zero, performing automatic variable selection. The strength of the penalty is controlled by a parameter $\lambda$, selected here via cross-validation.
+
+```{r lasso-prep}
+# glmnet requires a model matrix rather than a formula
+# model.matrix() converts factors to dummy variables automatically
+# we remove the intercept column as glmnet adds its own
+
+X_train <- model.matrix(log_price ~ . - price
+                        - review_scores_rating
+                        - review_scores_cleanliness
+                        - host_response_rate
+                        - availability_365
+                        - host_tenure_days
+                        - host_acceptance_rate
+                        - host_identity_verified
+                        - host_is_superhost,
+                        data = train)[, -1]
+
+X_test <- model.matrix(log_price ~ . - price
+                        - review_scores_rating
+                        - review_scores_cleanliness
+                        - host_response_rate
+                        - availability_365
+                        - host_tenure_days
+                        - host_acceptance_rate
+                        - host_identity_verified
+                        - host_is_superhost,
+                        data = test)[, -1]
+
+Y_train <- train$log_price
+Y_test <- test$log_price
+```
+
+```{r lasso-cv}
+set.seed(0)
+
+lasso_cv <- cv.glmnet(X_train, Y_train, alpha = 1, nfolds = 10)
+
+best_lambda <- lasso_cv$lambda.min
+cat("Best lambda:", round(best_lambda, 6), "\n")
+
+plot(lasso_cv)
+```
+
+```{r lasso-model}
+lasso_model <- glmnet(X_train, Y_train, alpha = 1, lambda = best_lambda)
+```
+
+```{r lasso-evaluation}
+lasso_predictions <- predict(lasso_model, s = best_lambda, newx = X_test)
+
+lasso_rmse <- sqrt(mean((Y_test - cv_predictions)^2))
+lasso_r2 <- cor(Y_test, lasso_predictions)^2
+
+cat("Lasso Model RMSE:", round(lasso_rmse, 4), "\n")
+cat("Lasso Model R-squared:", round(lasso_r2, 4), "\n")
+```
+
+```{r lasso-coefficients}
+lasso_coefs <- coef(lasso_model, s = best_lambda)
+
+lasso_coefs_df <- data.frame(
+  predictor = rownames(lasso_coefs),
+  coefficient = as.numeric(lasso_coefs)
+) |> 
+  filter(coefficient != 0, predictor != "(Intercept)") |> 
+  arrange(desc(abs(coefficient)))
+
+lasso_coefs_df
+```
+
+The Lasso model selects an optimal $\lambda$ of `r best_lambda` via cross-validation -- this is an extremely small penalty. As a result, `r nrow(lasso_coefs_df)` predictors retain non-zero coefficients and performance is virtually identical to the refined OLS model (RMSE: `r round(refined_rmse, 4)`, R-squared: `r round(refined_r2, 4)`). This indicates that after the manual variable removal carried out during EDA, little remaining redundancy exists for Lasso to eliminate. The result validates our earlier feature selection decisions and confirms that the predictors that we retained are all contributing meaningfully.
+
+## Model Comparison
+
+```{r model-comparison}
+comparison <- data.frame(
+  model = c("Baseline", "Refined", "Cross-Validated", "Lasso"),
+  RMSE = c(baseline_rmse, refined_rmse, cv_rmse, lasso_rmse),
+  R_squared = c(baseline_r2, refined_r2, cv_r2, lasso_r2)
+) |> 
+  mutate(RMSE = round(RMSE, 4),
+         R_squared = round(R_squared, 4)
+        )
+
+comparison
+```
+
+```{r comparison-plot}
+comparison |> 
+  pivot_longer(cols = c(RMSE, R_squared),
+               names_to = "metric",
+               values_to = "value") |> 
+  ggplot(aes(x = model, y = value, fill = model)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ metric, scales = "free_y") +
+  labs(title = "Model Comparison", x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The cross-validated refined model is selected as the final model. It matches Lasso performance almost identically, is more interpretable than Lasso for communicating individual predictor effects and cross-validation confirms its stability across different subsets of the training data.
