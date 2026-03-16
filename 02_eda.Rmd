@@ -492,3 +492,46 @@ Instant bookable shows a more noticeable difference, with non-instant bookable l
 Response time shows a slight trend. Listings where hosts respond within an hour tend to have higher median prices than those that take longer to reply. However, the interquartile ranges overlap substantially across all categories, suggesting that this is a weak signal at best. The "unkown" category sits in the middle, as would be expected.
 
 Overall, host characteristic variables show surprisingly weak relationships with price across both numeric and categorical predictors. In turn, location and property size variables are likely to dominate the model.
+
+## Correlation Analysis
+
+We examine correlations between all numeric predictors to identify potential multicollinearity issues before modelling. High correlations between predictors can destabilise coefficient estimates and inflate standard errors.
+
+```{r correlation-matrix}
+numeric_predictors <- listings |> 
+  select(where(is.numeric)) |> 
+  select(-price, -log_price) |> 
+  cor(use = "complete.obs")
+
+corrplot(
+  numeric_predictors,
+  method = "color",
+  type = "upper",
+  tl.cex = 0.7,
+  tl.col = "black",
+  addCoef.col = "black",
+  number.cex = 0.5,
+  col = colorRampPalette(c("#e05c5c", "white", "#4a90d9"))(200),
+  diag = FALSE
+)
+```
+
+Severable notable correlations are present that warrant our attention before modelling.
+
+**Property size variables:** `accomodates`, `bedrooms` and `beds` are highly intercorrelated (0.72-0.81). This is unsurprising since larger properties naturally have more bedrooms and beds, but including all three in the model simultaneously risks multicollinearity. This will be examined formally using Variance Inflation Factor (VIF) scores in the assumption section of this analysis.
+
+**Review score variables:** `review_scores_rating`, `review_scores_cleanliness`, `review_scores_location` and `review_scores_value` are moderately to highly intercorrelated (0.61-0.90). This presents two problems -- weak signalling and high collinearity. Careful consideration will be given to which review score variables will be retained in the final model.
+
+**Host response rate and review scores rating** show a moderate correlation (0.49), which tells us that more responsive hosts tend to receive higher review scores.
+
+**Reviews per month and availability** show a moderate negative correlation (-0.23), which suggests that listings that are booked more frequently naturally have lower availability, which is a logical relationship rather than a multicollinearity concern.
+
+All flagged correlations will be formally tested using VIF scores in the assumptions section. Variables with VIF above 5 will be considered for removal or consolidation.
+
+## Saving Updated Dataset
+
+The dataset has been further refined during EDA. We save the updated version to `data/clean/` for use in subsequent sections of this analysis.
+
+```{r save}
+write_csv(listings, "data/clean/listings_eda.csv")
+```
