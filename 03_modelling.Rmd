@@ -127,3 +127,42 @@ cat("Refined R-squared:", round(refined_r2, 4), "\n")
 ```
 
 The refined model changes by approximately `r round(refined_r2/baseline_r2 - 1, 3) * 100`% of R-squared compared to the baseline, confirming to us that the removed predictors were very minor signals. The tradeoff is a simpler, more interpretable model with reduced multicollinearity risk. The small performance cost is acceptable since now we have a cleaner predictor set.
+
+## Cross-Validated Model
+
+Cross-validation gives a more reliable estimate of model performance than a single train/test split. In 10-fold cross validation, the training set is split into 10 equal folds. The model is trained 10 times, each time using 9 folds for training and the remaining fold for validation.
+
+```{r cv-model}
+cv_control <- trainControl(method = "cv", number = 10)
+
+cv_model <- train(
+  log_price ~ . - price
+  - review_scores_rating
+  - review_scores_cleanliness
+  - host_response_rate
+  - availability_365
+  - host_tenure_days
+  - host_acceptance_rate
+  - host_identity_verified
+  - host_is_superhost,
+  data = train,
+  method = "lm",
+  trControl = cv_control
+)
+
+cv_model$results
+```
+
+```{r cv-evaluation}
+cv_predictions <- predict(cv_model, newdata = test)
+
+cv_rmse <- sqrt(mean((test$log_price - cv_predictions)^2))
+cv_r2 <- cor(test$log_price, cv_predictions)^2
+
+cat("CV Model RMSE:", round(cv_rmse, 4), "\n")
+cat("CV Model R-squared:", round(cv_r2, 4), "\n")
+```
+
+The cross-validated model produces identical test set performance to the refined model (RMSE: `r round(cv_rmse,4)`, R-squared: `r round(cv_r2,4)`), which is expected since they use the same predictor set. Cross-validation changes how we estimate performance, not the model itself.
+
+More importantly, the cross-validation results show a mean RMSE of `r round(cv_model$results["RMSE"], 4)` across 10 folds with a standard deviation of `r round(cv_model$results["RMSESD"], 4)`. This low variance across folds indicates the model is stable since performance is consistent regardless of which subset of the training data is used. The cross-validated R-squared of `r round(cv_model$results["Rsquared"], 4)` is very close to the test set R-squared of `r round(cv_r2, 4)`, indicating that the model generalises well to unseen data and is not overfitting to the training data.
