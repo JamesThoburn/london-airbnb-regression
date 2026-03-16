@@ -280,3 +280,215 @@ listings <- listings |>
   mutate(log_minimum_nights = log1p(minimum_nights)) |> 
   select(-minimum_nights)
 ```
+
+### Property Type
+
+`property_type` contains `r listings |> count(property_type) |> nrow()` distinct categories, the majority of which have negligible counts. The top 9 categories cover 95% of the listings. Rather than retaining all 9, we collapse into four interpretable groups that align with the most meaningful distinctions in the London market.
+
+```{r property-type-collapse}
+listings <- listings |> 
+  mutate(property_type = case_when(
+    str_detect(property_type, regex("^Entire", ignore_case = TRUE)) ~ "Entire place",
+    str_detect(property_type, regex("^Private room", ignore_case = TRUE)) ~ "Private room",
+    str_detect(property_type, regex("^Room in hotel", ignore_case = TRUE)) ~ "Hotel room",
+    TRUE ~ "Other"
+  ))
+
+# Check the property types
+listings |> count(property_type) |> arrange(desc(n))
+```
+
+## Relationships with Price
+
+We now examine how each predictor relates to `log_price`. Numeric predictors are visualised as scatterplots with a smooth trend line while categorical predictors are visualised as boxplots.
+
+### Numeric Predictors
+
+#### Property Characteristics
+
+```{r scatter-property}
+p1 <- ggplot(listings, aes(x = accommodates, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Accommodates", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = bedrooms, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Bedrooms", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = bathrooms, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Bathrooms", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = beds, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Beds", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+All four of the property size variables show a clear linear positive relationship with `log_price`. Accommodates, bedrooms, bathrooms and beds all increase consistently with price, which is to be expected since larger properties are known to command higher nightly rates. The relationships are reasonably linear on the log scale, suggesting that these predictors need not be transformed for our model. The vertical spread at each value reflects genuine price variation within properties of a given size, likely driven by location and quality differences which are captured by our other predictors.
+
+#### Host Characteristics
+
+```{r scatter-host}
+p1 <- ggplot(listings, aes(x = host_tenure_days, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Host Tenure (Days)", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = log_host_listings_count, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Log Host Listings Count", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = host_response_rate, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Host Response Rate", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = host_acceptance_rate, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Host Acceptance Rate", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+Host tenure shows almost no relationship with log price as the trend line lies almost completely flat across the full range of tenure values. This suggests that how long someone has been hosting is not a meaningful price signal and that the variable may contribute very little to the model.
+
+Log host listings show a weak positive relationship as hosts managing more properties tend to charge slightly higher prices, possibly suggesting that professional operators may manage higher-quality or better-located properties that command a higher price. The vertical striping reflects the discrete nature of the log-transformed count variable.
+
+Both host response rate and host acceptance rate show near-flat trend lines with a wide vertical spread for every value. These variables appear to have very weak linear relationships with price. The severe clustering at 100% that we noticed earlier is again visible here as a dense vertical band on the right of both plots. These variables are unlikely to be strong predictors and their coefficients should be interpreted cautiously.
+
+#### Reviews
+
+```{r scatter-reviews}
+p1 <- ggplot(listings, aes(x = review_scores_rating, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Rating", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = review_scores_cleanliness, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Cleanliness", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = review_scores_location, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Location Score", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = log_number_of_reviews, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Log Number of Reviews", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+Rating and cleanliness score both show almost flat lines with score inflation in the 4.0-5.0 section being made apparent yet again. These variables are unlikely to be meaningful predictors despite their intuitive appeal.
+
+Location score shows a weak positive relationship where listings in higher-rated locations command slightly higher prices, which is to be expected for a city like London where neighbourhood prestige varies considerably. However, the relationship is weak and the same clustering issue as before arrives.
+
+Log number of reviews shows a slight negative relationship with log price where higher priced listings tend to receive fewer reviews, likely due to them being less accessible (and thus, not booked as frequently) than a cheaper listing. The vertical striping again reflects the discrete nature of the underlying count variable before the log transformation.
+
+Overall, review score variables are likely to be weak predictors due to score inflation. This is an important thing to understand when interpreting model results.
+
+#### Availability
+
+```{r scatter-availability}
+p1 <- ggplot(listings, aes(x = availability_365, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Availability (365 Days)", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = log_minimum_nights, y = log_price)) +
+  geom_point(alpha = 0.1, size = 0.5) +
+  geom_smooth(method = "lm", colour = "#e05c5c") +
+  labs(title = "Log Minimum Nights", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p1 + p2
+```
+
+Availability over 365 days shows a completely flat trend line with no discernible relationship with log price. The multimodal distribution noted earlier is visible here with vertical strips of visibly higher density. This variable is unlikely to contribute meaningfully to the model.
+
+Log minimum nights shows a weak positive relationship where listings requiring longer minimum stays tend to charge slightly higher nightly prices, possibly reflecting that premium properties attract longer bookings. The vertical striping again reflects the discrete nature of minimum nights, even after the log transformation, as hosts tend to set values at integer numbers such as 1, 2, 3, 4, 5 and 7 nights.
+
+### Categorical Predictors
+
+#### Room and Property Type
+
+```{r boxplot-categoricals}
+p1 <- ggplot(listings, aes(x = room_type, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", colour = "white") +
+  coord_flip() +
+  labs(title = "Room Type", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = property_type, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", colour = "white") +
+  coord_flip() +
+  labs(title = "Property Type", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p1 / p2
+```
+
+Room type shows a clear and meaningful separation in log price. Entire home/apartment listings command substantially more than private rooms. The "Other" category has a much wider interquartile range than the other two, reflecting the mixed composition of this category. This is likely to be one of the strongest predictors in the dataset and could contribute significantly to the model.
+
+Property type mirrors this pattern closely as entire place listings price similarly to entire home/apartment in the room type plot, while private rooms are priced similarly here too. Hotel rooms sit closer to entire place pricing than private room pricing, which is to be expected. The "Other" category again has the widest interquartile range, again highlighting its mixed composition.
+
+The strong similarity between room type and property type distributions suggests that these two variables are likely highly correlated with each other. This will be examined formally later when we carry out correlation analysis.
+
+#### Host Details
+
+```{r boxplot-host}
+p1 <- ggplot(listings, aes(x = host_is_superhost, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", alpha = 0.7) +
+  labs(title = "Superhost", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = host_identity_verified, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", alpha = 0.7) +
+  labs(title = "Identity Verified", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = instant_bookable, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", alpha = 0.7) +
+  labs(title = "Instant Bookable", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = host_response_time, y = log_price)) +
+  geom_boxplot(fill = "#4a90d9", alpha = 0.7) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) +
+  labs(title = "Response Time", x = NULL, y = "Log Price") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+Superhost status and identity verified show very little difference in log price distributions as the boxes are very similar in both position and spread. These variables are unlikely to be meaningful predictors of price, suggesting that guests do not systematically pay more for listings with these credentials.
+
+Instant bookable shows a more noticeable difference, with non-instant bookable listings having a very slightly lower median price. The difference is negligible and this variable is unlikely to contribute strongly to the model.
+
+Response time shows a slight trend. Listings where hosts respond within an hour tend to have higher median prices than those that take longer to reply. However, the interquartile ranges overlap substantially across all categories, suggesting that this is a weak signal at best. The "unkown" category sits in the middle, as would be expected.
+
+Overall, host characteristic variables show surprisingly weak relationships with price across both numeric and categorical predictors. In turn, location and property size variables are likely to dominate the model.
