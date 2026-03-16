@@ -1,0 +1,129 @@
+---
+title: "Modelling"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, comment = "")
+```
+
+## Load Libraries
+```{r libraries}
+library(tidyverse)
+library(caret) # Provides cross-validation and model training framework
+library(glmnet) # Provides Ridge and Lasso regression
+```
+
+## Load Data
+```{r load-data}
+listings <- read_csv("data/clean/listings_eda.csv")
+```
+
+## Data Preparation
+
+### Encoding Categorical Variables
+
+Linear regression requires all predictors to be numeric. Categorical variables must be converted to dummy variables, which are essentially just binary (0 or 1) columns that represent each category. R's `lm()` function conveniently handles this automatically for factors, so we convert all character columns to factors first.
+
+```{r convert-char-to-fact}
+listings <- listings |> 
+  mutate(across(where(is.character), as.factor))
+```
+
+We also convert logical columns to integers (0 or 1) rather than factors since they are already binary.
+
+```{r convert-logi-to-fact}
+listings <- listings |> 
+  mutate(across(where(is.logical), as.integer))
+```
+
+### Removing Redundant Predictors
+
+Based on the EDA findings we drop a small number of predictors before modelling. `latitude` and `longitude` are excluded since raw coordinates have no linear interpretable relationship with price, alongside the fact that neighbourhood is already captured by `neighbourhood_cleansed`. `review_scores_value` is excluded due to its high correlation with other review score variables noted in the correlation analysis.
+
+```{r remove-predictors}
+listings <- listings |> 
+  select(-latitude, -longitude, -review_scores_value)
+```
+
+### Train/Test Split
+
+We split the data into a training set (80%) and a test set (20%). The model is trained exclusively on the training set and evaluated on the test set. This gives us a solid estimate as to how the model performs on unseen data (i.e. new listings).
+
+```{r train-test-split}
+set.seed(0)
+
+train_index <- createDataPartition(listings$log_price, p = 0.8, list = FALSE)
+
+train <- listings[train_index,]
+test <- listings[-train_index,]
+```
+
+`createDataPartition()` from the `caret` package splits the data whilst preserving the distribution of `log_price` across both sets, ensuring the split is representative. `set.seed(0)` ensures the split is reproducible and that anyone running this code will get an identical split.
+
+## Baseline Model
+
+From here we seek to produce a baseline model. The baseline model includes all remaining predictors with no refinement. The purpose of such a model is to establish a benchmark against which all following models can be compared. We train it on the training set only.
+
+```{r baseline-model}
+baseline <- lm(log_price ~ . - price, data = train)
+summary(baseline)
+```
+
+We evaluate it on the test set using the Root Mean Square Error (RMSE) and R-squared. RMSE measures the average prediction error in log price units and R-squared measures the proportion of variance in log price explained by the model.
+
+```{r baseline-evaluation}
+baseline_predictions <- predict(baseline, newdata = test)
+
+baseline_rmse <- sqrt(mean((test$log_price - baseline_predictions)^2))
+baseline_r2 <- cor(test$log_price, baseline_predictions)^2
+
+cat("Baseline RMSE:", round(baseline_rmse, 4), "\n")
+cat("Baseline R-squared:", round(baseline_r2, 4), "\n")
+```
+
+## Refined Model
+
+Based on the EDA findings, several predictors showed little to no relationship with log price and high intercorrelations with other predictors. These are removed before refitting to reduce noise and multicollinearity risk.
+
+**Removed predictors and rationale:**
+
+- `review_scores_rating` and `review_scores_cleanliness`: Highly correlated with other review scores (0.84 and 0.68) and low variance due to score inflation.
+- `host_response_rate`: Weak price relationship and moderate correlation with review scores rating (0.49).
+- `availability_365` and `host_tenure_days`: Near-flat trend lines against log price in EDA.
+- `host_acceptance_rate`, `host_identity_verified`, `host_is_superhost`: Negligible price signal in categorical boxplots.
+
+```{r refined-model}
+refined <- lm(
+  log_price ~ . - price
+  - review_scores_rating
+  - review_scores_cleanliness
+  - host_response_rate
+  - availability_365
+  - host_tenure_days
+  - host_acceptance_rate
+  - host_identity_verified
+  - host_is_superhost,
+  data = train
+)
+
+summary(refined)
+```
+
+```{r refined-evaluation}
+refined_predictions <- predict(refined, newdata = test)
+
+refined_rmse <- sqrt(mean((test$log_price - refined_predictions)^2))
+refined_r2 <- cor(test$log_price, refined_predictions)^2
+
+cat("Refined RMSE:", round(refined_rmse, 4), "\n")
+cat("Refined R-squared:", round(refined_r2, 4), "\n")
+```
+
+The refined model changes by approximately `r round(refined_r2/baseline_r2 - 1, 3) * 100`% of R-squared compared to the baseline, confirming to us that the removed predictors were very minor signals. The tradeoff is a simpler, more interpretable model with reduced multicollinearity risk. The small performance cost is acceptable since now we have a cleaner predictor set.
