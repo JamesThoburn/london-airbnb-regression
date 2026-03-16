@@ -70,7 +70,7 @@ listings |>
 The upper tail reveals a very small number of extreme values -- the 99.9th percentile sits at approximately $4,621 yet the maximum is $74,100, suggesting these are not genuine nightly prices. As such, we will cap the price at the 99th percentile (approximately $908) to remove clear outliers while retaining legitimate high-end listings. This affects fewer than 1% of observations.
 
 ```{r price-cap}
-cap <- 908.00
+cap <- quantile(listings$price, 0.99)
 
 listings <- listings |> 
   filter(price <= cap)
@@ -121,3 +121,162 @@ p1 + p2 # Using patchwork library
 ```
 
 The log transformation produces an approximately normal distribution, satisfying the normality assumption of the target variable and making the model more robust to the influence of high-value listings. As such, all subsequent analysis and modelling will use `log_price` as the target variable. The raw price is retained in the dataset so that we have good interpretability when reporting the final results.
+
+## Predictor Distributions
+
+Next, we examine the distribution of each predictor, grouped by type. Numeric predictors are visualised as histograms and categorical predictors as bar charts.
+
+### Property Characteristics
+
+First, we plot the numeric-typed property characteristics, namely `accomodates`, `bedrooms`, `beds` and `bathrooms`.
+
+```{r property-numeric-dist}
+p1 <- ggplot(listings, aes(x = accommodates)) +
+  geom_histogram(bins = 20, fill = "#4a90d9", colour = "white") +
+  labs(title = "Accommodates", x = NULL, y = "Count") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = bedrooms)) +
+  geom_histogram(bins = 20, fill = "#4a90d9", colour = "white") +
+  labs(title = "Bedrooms", x = NULL, y = "Count") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = beds)) +
+  geom_histogram(bins = 20, fill = "#4a90d9", colour = "white") +
+  labs(title = "Beds", x = NULL, y = "Count") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = bathrooms)) +
+  geom_histogram(bins = 20, fill = "#4a90d9", colour = "white") +
+  labs(title = "Bathrooms", x = NULL, y = "Count") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+`accomodates`, `bedrooms` and `beds` are all right-skewed, as expected. The majority of the listings accomodate a small group of people, have 1-2 bedrooms and 1-2 beds. There are some extreme values, but these are plausible for property listings designed for large groups and thus don't need to be removed. `bathrooms` is heavily concentrated at 1, notice the existence of 0.5 bathroom (half-bath only) listings.
+
+Next, we plot `room_type`, the only categorical property characteristic.
+
+```{r room-type-dist}
+listings |> 
+  count(room_type) |> 
+  ggplot(aes(x = reorder(room_type, n), y = n)) +
+  geom_col(fill = "#4a90d9") +
+  coord_flip() +
+  labs(title = "Room Type", x = NULL, y = "Count") +
+  theme_minimal()
+```
+
+Room type is heavily dominated by entire home/apartment listings. Shared room and hotel room each represent a negligible portion of listings, and as such will produce unstable estimates if treated as separate categories. As such, we collapse these into an "Other" category.
+
+```{r room-type-other-category}
+listings <- listings |> 
+  mutate(room_type = case_when(
+    room_type %in% c("Shared room", "Hotel room") ~ "Other",
+    TRUE ~ room_type
+  ))
+```
+
+### Host Characteristics
+
+```{r host-dist}
+p1 <- ggplot(listings, aes(x = host_tenure_days)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Host Tenure (Days)", x = NULL, y = "Count") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = host_listings_count)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Host Listings Count", x = NULL, y = "Count") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = host_response_rate)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Host Response Rate", x = NULL, y = "Count") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = host_acceptance_rate)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Host Acceptance Rate", x = NULL, y = "Count") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+`host_tenure_days` is broadly distributed, reflecting Airbnb's growth since its foundation in 2008. The slight bimodal shape suggests that there were two waves of hosts joining the platform.
+
+`host_listings_count` is severely right-skewed since the majority of hosts manage a single property, but a long tail of commercial operators manage hundreds to thousands of properties. This variable will require a log transformation prior to modelling.
+
+```{r log-host-listings-count}
+listings <- listings |> 
+  mutate(log_host_listings_count = log1p(host_listings_count)) |> 
+  select(-host_listings_count)
+```
+
+Both `host_response_rate` and `host_acceptance_rate` are heavily concentrated at 100%, reflecting that most hosts are active and maintain high engagement. The distributions are otherwise relatively flat.
+
+### Reviews
+```{r reviews-dist}
+p1 <- ggplot(listings, aes(x = review_scores_rating)) +
+  geom_histogram(bins = 30, fill = "#4a90d9", colour = "white") +
+  labs(title = "Rating", x = NULL, y = "Count") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = review_scores_cleanliness)) +
+  geom_histogram(bins = 30, fill = "#4a90d9", colour = "white") +
+  labs(title = "Cleanliness", x = NULL, y = "Count") +
+  theme_minimal()
+
+p3 <- ggplot(listings, aes(x = review_scores_location)) +
+  geom_histogram(bins = 30, fill = "#4a90d9", colour = "white") +
+  labs(title = "Location Score", x = NULL, y = "Count") +
+  theme_minimal()
+
+p4 <- ggplot(listings, aes(x = number_of_reviews)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Number of Reviews", x = NULL, y = "Count") +
+  theme_minimal()
+
+(p1 + p2) / (p3 + p4)
+```
+
+All three of Rating, Cleanliness and Location Score are heavily-left-skewed with a spike at 5.0. This is a well-known phenomenon in Airbnb called "review score inflation", where guests rarely leave scores less than a 4, making the scale effectively compressed into the 4.0-5.0 range. This has implications for modelling due to these variables having little variance in them. This signals that these three variables have a poor discriminatory power and is worth keeping in mind when interpreting their coefficients in the model.
+
+Number of Reviews is severely right-skewed with the vast majority of the listings having fewer than 100 reviews and a long tail extending to near 2,000. This will need a log transformation prior to modelling, similar to `host_listings_count`.
+
+```{r log-number-of-reviews}
+listings <- listings |> 
+  mutate(log_number_of_reviews = log1p(number_of_reviews)) |> 
+  select(-number_of_reviews)
+```
+
+### Availability and Booking
+```{r availability-dist}
+p1 <- ggplot(listings, aes(x = availability_365)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Availability (365 Days)", x = NULL, y = "Count") +
+  theme_minimal()
+
+p2 <- ggplot(listings, aes(x = minimum_nights)) +
+  geom_histogram(bins = 40, fill = "#4a90d9", colour = "white") +
+  labs(title = "Minimum Nights", x = NULL, y = "Count") +
+  theme_minimal()
+
+p1 + p2
+```
+
+For Availability, we see spikes on both ends of the distribution. A large group of listings (0-100 days) are not commonly available, whilst another large group of listings (300-365 days) are almost always available. This likely reflects two different approaches that hosts may take to listing their property -- those who list rarely and those who list full-time. Whilst unusual, this distribution is valid and doesn't require any transformation.
+
+The Minimum Nights distribution is heavily right-skewed with the vast majority of the listings requiring at least 1-7 nights and a tail extending absurdly to 1,000 nights. Values above 30 are almost certainly long-term rentals, as opposed to the usual short-term stays, which is outside the scope of this analysis. As such, we will introduce a cap and apply a log transformation.
+
+```{r minimum-nights-cap}
+listings <- listings |> 
+  filter(minimum_nights <= 30)
+```
+
+```{r log-minimum-nights}
+listings <- listings |> 
+  mutate(log_minimum_nights = log1p(minimum_nights)) |> 
+  select(-minimum_nights)
+```
