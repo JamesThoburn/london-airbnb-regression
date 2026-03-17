@@ -35,7 +35,6 @@ The analysis is organised as follows:
 
 1. **Data Cleaning:** Handling missing values, dealing with outliers.
 2. **Exploratory Data Analysis:** Studying distributions, correlations and patterns within the data.
-3. **Feature Engineering:** Applying transformations, factor encoding and interaction terms.
-4. **Modelling:** Producing a regression model.
-5. **Assumptions:** Checking that the linear model assumptions have been met.
-6. **Evaluation:** Discussing results, limitations and coming to conclusions.
+3. **Modelling:** Producing a regression model.
+4. **Assumptions:** Checking that the linear model assumptions have been met.
+5. **Evaluation:** Discussing results, limitations and coming to conclusions.
