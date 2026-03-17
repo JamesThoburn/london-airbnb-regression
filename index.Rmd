@@ -38,3 +38,6 @@ The analysis is organised as follows:
 3. **Modelling:** Producing a regression model.
 4. **Assumptions:** Checking that the linear model assumptions have been met.
 5. **Evaluation:** Discussing results, limitations and coming to conclusions.
+
+---
+*Next: [Data Cleaning and Preparation](01_data.html)*

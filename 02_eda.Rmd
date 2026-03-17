@@ -535,3 +535,6 @@ The dataset has been further refined during EDA. We save the updated version to 
 ```{r save}
 write_csv(listings, "data/clean/listings_eda.csv")
 ```
+
+---
+*Previous: [Data Cleaning and Preparation](01_data.html) | Next: [Modelling](03_modelling.html)*

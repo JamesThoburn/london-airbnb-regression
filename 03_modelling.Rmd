@@ -271,3 +271,6 @@ comparison |>
 ```
 
 The cross-validated refined model is selected as the final model. It matches Lasso performance almost identically, is more interpretable than Lasso for communicating individual predictor effects and cross-validation confirms its stability across different subsets of the training data.
+
+---
+*Previous: [Exploratory Data Analysis](02_eda.html) | Next: [Assumptions](04_assumptions.html)*

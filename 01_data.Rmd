@@ -273,3 +273,6 @@ Now we can simply save the cleaned dataset to `data/clean/` so that the subseque
 ```{r save}
 write_csv(listings, "data/clean/listings_clean.csv")
 ```
+
+---
+*Previous: [Overview](index.html) | Next: [Exploratory Data Analysis](02_eda.html)*

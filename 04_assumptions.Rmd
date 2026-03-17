@@ -161,3 +161,6 @@ Rather than removing either variable (since they both carry genuine predictive s
 | Normality of Residuals | ✗ Violated | Mitigated by large sample sizes and robust standard errors. |
 | Independence | ✓ Satisfied (Practically) | DW statistic acceptable, p-value is a result of large sample size. |
 | Multicollinearity | ⚠ Partially satisified | `property_type` and `room_type` are structurally correlated. This is accepted.
+
+---
+*Previous: [Modelling](03_modelling.html) | Next: [Evaluation](05_evaluation.html)*
