@@ -1,0 +1,163 @@
+---
+title: "Assumptions"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "")
+```
+
+## Load Libraries
+```{r libraries}
+library(tidyverse)
+library(caret)
+library(car) # Provides VIF calculation for multicollinearity testing
+library(lmtest) # Provides Breusch-Pagan test for heteroscedasticity
+```
+
+## Load Data and Refit Model
+
+We reload the cleaned dataset and refit the cross-validated refined model. Assumption diagnostics are run on the training set model.
+
+```{r load-data}
+listings <- read_csv("data/clean/listings_eda.csv")
+
+listings <- listings |> 
+  mutate(across(where(is.character), as.factor)) |> 
+  mutate(across(where(is.logical), as.integer)) |> 
+  select(-latitude, -longitude, -review_scores_value)
+```
+
+```{r refit-model}
+set.seed(0)
+
+train_index <- createDataPartition(listings$log_price, p = 0.8, list = FALSE)
+train <- listings[train_index,]
+test <- listings[-train_index,]
+
+model <- lm(
+  log_price ~ . - price
+  - review_scores_rating
+  - review_scores_cleanliness
+  - host_response_rate
+  - availability_365
+  - host_tenure_days
+  - host_acceptance_rate
+  - host_identity_verified
+  - host_is_superhost,
+  data = train
+)
+```
+
+## Assumption 1: Linearity
+
+Linearity assumes that the relationship between predictors and log price is linear. To check this assumption, we examine a plot of residuals against fitted values. If the assumption holds then residuals should be randomly scattered around zero with no systematic pattern.
+
+```{r linearity}
+plot(model, which = 1) # Produces Residuals vs Fitted plot
+```
+
+The residuals vs fitted plot shows a (roughly) flat trend line centred on zero across the full range of fitted values, indicating that the linearity assumption is satisified. The slight downward drift at the upper tail (fitted values above approximately 6.5) is driven by a small number of outlying observations in a very sparse region and thus does not suggest violation of linearity. The linearity assumption is considerably satisfied.
+
+## Assumption 2: Homoscedasticity
+
+Homoscedasticity assumes that the variance of residuals is constant across all fitted values. To check this assumption, we first examine a scale-location plot. If the assumption holds then the spread of the residuals should be uniform across the range of fitted values with a flat trend line.
+
+```{r homoscedasticity}
+plot(model, which = 3)
+```
+
+The scale-location plot shows a broadly flat trend line with a slight upward drift for larger fitted values. This seems to point us towards thinking that the homoscedasticity assumption is met.
+
+For a more rigorous check, we can also formally confirm homoscedasticity with the Breusch-Pagan test, where the null hypothesis is constant residual variance. A significant p-value indicates heteroscedasticity.
+
+```{r breusch-pagan}
+bp_result <- bptest(model)
+bp_result
+```
+
+The Breusch-Pagan test returns a very small p-value (< $2.2 \times 10^{-16}$), strongly rejecting the null hypothesis of constant residual variance at most reasonable levels of significance. Therefore, we conclude that heteroscedasticity is present.
+
+This is quite a common finding in large property price datasets even after log transformation. The residual variance still tends to increase at higher price points. While the log transformation has mitigated the most severe heteroscedasticity, the remaining needs to be addressed for our standard errors from OLS to be reliable for inference.
+
+We address this issue by computing heteroscedasticity-consistent (HC3) robust standard errors using the `sandwich` package. This does not affect coefficient estimates but corrects the standard errors and any derived inference.
+
+```{r robust-se}
+library(sandwich)
+library(lmtest)
+coeftest(model, vcov = vcovHC(model, type = "HC3"))
+```
+
+Heteroscedasticity-consistent (HC3) robust standard errors are reported above. The coefficient estimates are unchanged from the OLS model since robust standard errors correct for inference only, not the estimates themselves. The majority of predictors remain highly significant under robust standard errors, giving confidence that the heteroscedasticity violation does not undermine the model's findings.
+
+Notable exceptions to this are `has_parking` (p = 0.120) and `neighbourhood_cleansed` levels for Croydon (p = 0.882), Redbridge (p = 0.328), Bromley (p = 0.064) and Sutton (p = 0.132), which are not statistically significant at the 5% level. As such, these are candidates for removal in model refinement, but do not affect the validity of the assumption of homoscedasticity.
+
+## Assumption 3: Normality of Residuals
+
+Normality of residuals assumes that the residuals from the model are approximately normally distributed. To assess this assumption, we will first use a Q-Q plot.
+
+```{r normality-qq}
+plot(model, which = 2)
+```
+
+The Q-Q plot reveals that we have clear deviation away from normality on both tails. The lower tail curves sharply below the reference line, while the upper tail curves sharply above the reference line. This indicates that we have heavier tails than a normal distribution. The central portion of the distribution follows the line very closely, suggesting that approximate normality  holds for the majority of the observations.
+
+To formally test normality for such a large dataset we use the Anderson-Darling test, which is well suited to large samples and gives greater weight to tail behaviour, as we will likely require given the deviations shown by the Q-Q plot.
+
+```{r anderson-darling}
+library(moments) # Allows us to check skewness and kurtosis
+library(nortest) # Provides Anderson-Darling test
+
+residuals_model <- residuals(model)
+
+ad.test(residuals_model)
+skewness(residuals_model)
+kurtosis(residuals_model)
+```
+
+The Anderson-Darling test formally rejects normality since it reports back a very small p-value (< < $2.2 \times 10^{-16}$). The skewness of `r round(skewness(residuals_model),2)` indicates that we have a little bit of positive skew, but the kurtosis of `r round(kurtosis(residuals_model),2)` confirms the heavy-tails that we observed in the Q-Q plot. For reference, the kurtosis of a normal distribution is 3, so the residual distribution has more extreme values than the normality assumption would predict.
+
+This violation is to be acknowledged, but does not invalidate the model for a whole host of reasons. Firstly, with approximately 37,000 training observations, the [Central Limit Theorem](https://en.wikipedia.org/wiki/Central_limit_theorem) ensures that coefficient estimates and their standard errors are asymptotically valid regardless of the residual distribution. Secondly, the heteroscedasticity-consistent robust standard errors computed in Assumption 2 already provide reliable inference without relying on normality. Thirdly, the skewness is mild so the primary concern here is the behaviour at the tails rather than a whole systematic asymmetry. Hence, the normality assumption is violated, but the practical impact on inference is limited given the sample size and use of robust standard errors.
+
+## Assumption 4: Independence
+
+Independence assumes that residuals are not correlated with each other. We formally test this using the Durbin-Watson test, where a value close to 2 indicates independence (no autocorrelation).
+
+```{r independence}
+dw_result <- dwtest(model)
+dw_result
+```
+
+The Durbin-Watson statistic of `r round(dw_result$statistic["DW"],3)` is close to 2, indicating minimal autocorrelation in practice. This contradicts the test saying that positive autocorrelation is present. The contradiction occurs due to the test becoming extremely sensitive for large sample sizes. The Durbin-Watson test is detecting trivially small autocorrelations that have no practical significance.
+
+What matters more here is the DW statistic. A value of `r round(dw_result$statistic["DW"],3)` represents negligible departure from 2. Since listings are not sequential, and are independent snapshots, there is no reason to believe that there is any meaningful autocorrelation here. As such, the independence assumption is considered satisifed in practical terms.
+
+## Assumption 5: Multicollinearity
+
+Multicollinearity occurs when predictors are highly correlated with each other, inflating standard errors and making coefficient estimates unstable. To assess multicollinearity, we use Variance Inflation Factors (VIF) values. We will say that a VIF above 5 indicates moderate multicollinearity and above 10 indicates severe multicollinearity.
+
+```{r vif}
+vif(model)
+```
+
+For categorical variables with multiple levels, the adjusted `GVIF^(1/(2*Df))` column is the appropriate diagnostic. Values above 2.24 are equivalent to a standard VIF above 5.
+
+The vast majority of the predictors show no multicollinearity concern, with`GVIF^(1/(2*Df))` values close to 1. The exceptions are `property_type` (2.52) and `room_type` (3.94), indicating moderate and severe multicollinearity respectively. This shouldn't be surprising to us since these two variables encode overlapping information, and are heavily linked to each other. 
+
+Rather than removing either variable (since they both carry genuine predictive signal), we will accept collinearity as a structural feature of the data. The robust standard errors computed in Assumption 2 provide some protection against inflated standard errors and the coefficient estimates themselves remain interpretable in the context of the other variable being held constant. However, we should note that individual coefficients for `property_type` and `room_type` should be interpreted with caution, despite their combined contribution to the model being completely valid.
+
+## Assumptions Summary
+
+| Assumption | Status | Action Taken |
+| --- | --- | --- |
+| Linearity | ✓ Satisfied | None required. |
+| Homoscedasticity | ✗ Violated | HC3 robust standard errors applied. |
+| Normality of Residuals | ✗ Violated | Mitigated by large sample sizes and robust standard errors. |
+| Independence | ✓ Satisfied (Practically) | DW statistic acceptable, p-value is a result of large sample size. |
+| Multicollinearity | ⚠ Partially satisified | `property_type` and `room_type` are structurally correlated. This is accepted.
