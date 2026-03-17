@@ -1,0 +1,136 @@
+---
+title: "Evaluation"
+author: "James Thoburn"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, comment = "")
+```
+
+## Load Libraries
+```{r libraries}
+library(tidyverse)
+library(caret)
+library(sandwich)
+library(lmtest)
+library(broom) # Required to use the tidy() function
+```
+
+## Load Data and Refit Model
+  
+```{r load-data}
+listings <- read_csv("data/clean/listings_eda.csv")
+
+listings <- listings |> 
+  mutate(across(where(is.character), as.factor)) |> 
+  mutate(across(where(is.logical), as.integer)) |> 
+  select(-latitude, -longitude, -review_scores_value)
+
+set.seed(0)
+train_index <- createDataPartition(listings$log_price, p = 0.8, list = FALSE)
+train <- listings[train_index,]
+test <- listings[-train_index,]
+
+model <- lm(
+  log_price ~ . - price
+  - review_scores_rating
+  - review_scores_cleanliness
+  - host_response_rate
+  - availability_365
+  - host_tenure_days
+  - host_acceptance_rate
+  - host_identity_verified
+  - host_is_superhost,
+  data = train
+)
+```
+
+## Model Performance
+
+We evaluate the model on the test set. Comparing test performance against training performance reveals whether the model generalises well or merely memorises the training data.
+
+```{r model-performance}
+test_preds <- predict(model, newdata = test)
+
+postResample(pred = test_preds, obs = test$log_price)
+
+cat("Training R-squared:", summary(model)$r.squared, "\n")
+cat("Training Adjusted R-squared:", summary(model)$adj.r.squared, "\n")
+```
+
+The model explains approximately `r round(summary(model)$r.squared,3) * 100`% of the variation in log price on the training set (R-squared = `r round(summary(model)$r.squared,3)`, Adjusted R-squared = `r round(summary(model)$adj.r.squared,3)`) and 72.5% on the unseen test set (R-squared = 0.725). The near-identical training and test performance confirms that the model generalises well to unseen data and is not overfitting.
+
+The RMSE of 0.375 and MAE of 0.285 are on the log price scale. Back-transforming to the original price scale, the model's predictions are within approximately 33% of the true price on average ($e^{0.285} \approx 1.33$) and within 45% for the majority of predictions ($e^{0.375} \approx 1.45$). This means that for a listing priced at 130 dollars, we have a typical prediction error of roughly 43 dollars.
+
+## Predicted vs Actual
+
+A plot of predicted against actual log prices on the test set gives a visual confirmation of the model fit. A perfect model would place all points on the diagonal.
+
+```{r predicted-vs-actual}
+tibble(
+  actual = test$log_price,
+  predicted = test_preds
+) |> 
+  ggplot(aes(x = actual, y = predicted)) +
+  geom_point(alpha = 0.1, size = 0.8, colour = "#4a90d9") +
+  geom_abline(intercept = 0, slope = 1, colour = "#e05c5c", linewidth = 0.8) +
+  labs(
+    title = "Predicted vs Actual Log Price (Test Set)",
+    x = "Actual Log Price",
+    y = "Predicted Log Price"
+  ) +
+  theme_minimal()
+```
+
+The predicted vs actual plot shows points clustering tightly around the diagonal across the central price range, confirming good model fit for typical listings. Two systematic patterns are visible at the extremes: the model tends to over-predict at very low prices and under-predict at very high prices. This is consistent with the heavy-tailed residual distribution identified in the assumptions analysis and reflects the inherent difficulty of predicting atypical listings from structured features alone.
+
+## Key Findings
+
+The coefficient estimates from the model, interpreted with robust standard errors, reveal several meaningful findings about what drives Airbnb prices in London.
+
+```{r key-findings}
+coeftest(model, vcov = vcovHC(model, type = "HC3")) |> 
+  tidy() |> 
+  arrange(desc(abs(estimate))) |> 
+  filter(p.value < 0.05) |> 
+  select(term, estimate, std.error, p.value) |> 
+  mutate(across(where(is.numeric), ~ round(.,4)))
+```
+
+From this we can tell the following:
+
+**Location** is the dominant driver of Airbnb nightly prices. Listings in Westminster (+0.633), Kensington and Chelsea (+0.638) and City of London (+0.711) tend to command the highest prices relative to the baseline borough. This is consistent with London's well established spatial price trends.
+
+**Property Characteristics** also matter substantially in determining Airbnb nightly prices. Each additional bedroom adds approximately 15.4% to the price ($e^{0.154} - 1$) and each additional person accommodated for adds 8.3% ($e^{0.079} - 1$) to the price. Private rooms are priced 45% lower than entire homes.
+
+**Amenities** have measurable but secondary effects. Air conditioning (+18.7%), elevator access (+12.7%) and gym availability (+7.2%) are the strongest amenity predictors, which is unsurprising for a London market where these features are not universal.
+
+**Review behaviour** reveals an interesting negative relationship where `reviews_per_month` is negatively associated with price (-0.037 per unit). Higher-priced listings tend to be booked less frequently, generating fewer reviews per month.
+
+## Limitations
+
+This model has several limitations that are worth stating explicitly.
+
+**Assumption violations:** Homoscedasticity and normality of residuals are both violated. Robust standard errors mitigate the inferential consequences but the violations must be acknowledged. A generalised linear model or quantile regression approach may be more appropriate for future work.
+
+**Scope restriction:** The model only applies to reviewed listings. The approximately 22% of listings with no reviews were removed during cleaning.
+
+**Snapshot:** The data represents a single snapshot in time (September 2025). Price dynamics, seasonal effects and market shifts are not accounted for in this model.
+
+**Unexplained variance:** An R-squared of 0.725 means approximately 27.5% of price variance remains unexplained. Likely sources of this unexplained varation include signals that weren't captured in the original dataset (e.g. the quality of photos/property description writing), host reputation factors and pricing strategies used by some hosts.
+
+**`has_parking` insignificance:** The parking amenity flag was not statistically significant under robust standard errors (p = 0.120). This likely reflects that parking in London isn't a strong signal since it is valuable to have parking in outer boroughs, but less valuable to have parking in inner boroughs (where car ownership is lower).
+
+## Conclusion
+
+This project developed a multiple linear regression model to predict nightly Airbnb listing prices in London. The model explains 72.5% of price variation on unseen data, generalises well with no evidence of overfitting and produces coefficients that align with our prior expectations about the London Airbnb property market.
+
+The findings confirm that location, property size and room type are the dominant predictors of price, with amenities and host characteristics playing a secondary but statistically significant role in predicting price. The model is well-suited for interpretive analysis of price drivers but should be treated with appropriate caution for precise price prediction given the assumption violations documented in the assumption diagnostics section of this analysis.
+
+To develop upon this, future work could explore spatial regression models to better account for geographic price clustering, or ensemble methods where predictive accuracy is prioritised over interpretability. 
