@@ -13,6 +13,10 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Abstract
+
+This project develops a multiple linear regression model to predict nightly Airbnb listing prices in London using data sourced from Inside Airbnb (September 2025, approximately 47,000 reviewed listings). Following a structured pipeline of data cleaning, exploratory data analysis and feature engineering, the final model explains 72.5% of the variation in log nightly price on unseen test data (R-squared = 0.725). with no evidence of overfitting being present. Location emerges as the dominant price driver, with listings in Westminster, Kensington and Chelsea and the City of London commanding the largest prices. Property size, room type and amenities (particularly air conditioning and elevator access) are significant secondary predictors. Regression assumptions are formally tested, with the results of these tests documented. Heteroscedasticity and non-normality of residuals are both acknowledge and addressed via heteroscedasticity-consistent robust standard errors. The model is well-suited for interpretive analysis of London Airbnb price dynamics but should be treated with appropriate caution for precise price prediction.
+
 ## Project Overview
 
 This project investigates what factors drive Airbnb listing prices across London. Using listing data sourced from [Inside Airbnb](https://insideairbnb.com), a multiple linear regression model is developed to predict the nightly price from property and host characteristics.
