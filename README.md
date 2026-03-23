@@ -6,7 +6,7 @@ This project investigates what property and host characteristics are the stronge
 
 ## Key Findings
 
-- The model explains **72.5 of the variation** in log nightly prices on unseen test data (R-squared = 0.725), with no evidence of overfitting.
+- The model explains **72.5% of the variation** in log nightly prices on unseen test data (R-squared = 0.725), with no evidence of overfitting.
 - **Location** is the dominant price driver. Listings in Westminster, Kensington and Chelsea, and the City of London command the largest prices.
 - **Property size** matters substantially since each additional bedroom adds approximately 15% to the price and each additional person accommodated adds around 8% to the price.
 - **Private rooms** are priced approximately 45% lower than entire homes.
